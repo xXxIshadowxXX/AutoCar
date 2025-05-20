@@ -1,0 +1,11 @@
+To install the dependency's for the zumo part of the code you will need the libraries located inside the dependency's folder.
+
+Once those are installed on your device you need to locate the Arduino IDE folder. This is easily done by opening your Arduino IDE then FILE(top left)->Open. in this folder open the folder libraries in this folder put all of the files from the dependency's folder.
+
+(Examples can be found in \zumo-32u4-arduino-library-master\examples.)
+
+Afterward to connect a board to the zumo-34u4 you will need to install the board files. Follow the steps in this link to download the board files.
+
+https://www.pololu.com/docs/0J63/5.2
+
+Once this is done you can test the working of your installation by running any of the examples.
