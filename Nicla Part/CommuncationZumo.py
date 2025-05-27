@@ -18,5 +18,5 @@ def send_code(code):
     to_zumo.value(0)
 
 while True:
-    send_code(0b00101110)  # Voorbeeldbyte
+    send_code(0b00101101)  # Voorbeeldbyte
     time.sleep(1)  # Wacht even voor volgende verzending
