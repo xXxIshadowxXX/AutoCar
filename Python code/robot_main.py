@@ -1,0 +1,90 @@
+import sensor, image, time
+import network, socket
+from pyb import LED
+
+# === Config ===
+SSID = "CarGalss"
+KEY = "Kuijpers"
+PORT = 80
+
+# === Setup camera ===
+print("Skibedi")
+sensor.reset()
+sensor.set_pixformat(sensor.RGB565)
+sensor.set_framesize(sensor.QVGA)
+sensor.skip_frames(time=2000)
+
+# === LEDs voor status ===
+LED(1).off()  # Rood
+LED(2).on()   # Groen = nog niet verbonden
+
+# === Verbinden met WiFi ===
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.connect(SSID, KEY)
+
+while not wlan.isconnected():
+    time.sleep_ms(100)
+
+LED(2).off()
+LED(1).on()  # Verbonden
+ip = wlan.ifconfig()[0]
+print("Verbonden met IP:", ip)
+
+# === Socket server setup ===
+addr = socket.getaddrinfo("0.0.0.0", PORT)[0][-1]
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(addr)
+s.listen(1)
+print("HTTP-server actief op: http://%s:%d" % (ip, PORT))
+
+buffered_image = None
+
+def send_all(client, data):
+    if not isinstance(data, (bytes, bytearray)):
+        data = bytes(data)  # of bytearray(data)
+    length = len(data)
+    sent = 0
+    while sent < length:
+        sent += client.send(data[sent:])
+
+# Maak bij start 1x een foto
+print("Initieel foto maken...")
+img = sensor.snapshot()
+img.rotation_corr(z_rotation=180)
+buffered_image = img.compress(quality=60)
+
+while True:
+    client, addr = s.accept()
+    request = client.recv(1024)
+    request = str(request)
+
+    if "/capture" in request:
+        print("Nieuwe foto maken...")
+        img = sensor.snapshot()
+        img.rotation_corr(z_rotation=180)
+        buffered_image = img.compress(quality=60)
+        client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nFoto genomen")
+
+    elif "/approve" in request:
+        print("Foto goedgekeurd")
+        LED(3).on()
+        client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nVolgende foto")
+        LED(3).off()
+
+    elif "/getphoto" in request:
+        if buffered_image:
+            client.send("HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\n\r\n")
+            send_all(client, buffered_image)
+        else:
+            client.send("HTTP/1.1 404 Not Found\r\n\r\nNog geen foto")
+
+    else:
+        client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+        client.send("<h1>Commando's:</h1>")
+        client.send("<a href='/capture'>Capture</a><br>")
+        client.send("<a href='/getphoto'>Bekijk foto</a><br>")
+        client.send("<a href='/approve'>Goedkeuren</a><br>")
+
+    client.close()
