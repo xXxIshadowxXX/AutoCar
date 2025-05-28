@@ -50,18 +50,18 @@ def send_all(client, data):
     sent = 0
     while sent < length:
         sent += client.send(data[sent:])
-        
+
 def send_code(code):
     # 1. Startbit sturen (hoog)
     to_zumo.value(1)
     time.sleep_ms(10)
-        
+
     # 2. Verzend de 8 databitjes (MSB → LSB)
     for i in range(7, -1, -1):
         bit = (code >> i) & 1
         to_zumo.value(bit)
         time.sleep_ms(10)
-        
+
     # 3. Na afloop: lijn weer laag
     to_zumo.value(0)
 
