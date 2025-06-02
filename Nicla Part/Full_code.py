@@ -25,8 +25,33 @@ wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 wlan.connect(SSID, KEY)
 
-while not wlan.isconnected():
-    time.sleep_ms(100)
+# Verbinding met timeout
+connect_attempts = 0
+max_attempts = 30  # 15 seconden timeout
+
+# Scan voor beschikbare netwerken (debug)
+print("Scannen naar netwerken...")
+try:
+    networks = wlan.scan()
+    print("Gevonden netwerken:")
+    for net in networks:
+        print(" -", net[0].decode('utf-8'), "- Signal:", net[3])
+except:
+    print("Scan mislukt")
+
+print(f"Verbinden met: {SSID}")
+wlan.connect(SSID, KEY)
+
+while not wlan.isconnected() and connect_attempts < max_attempts:
+    time.sleep_ms(500)
+    connect_attempts += 1
+    print(f"Verbinden... poging {connect_attempts}/{max_attempts}")
+
+    # Blink LED tijdens verbinden
+    if connect_attempts % 2 == 0:
+        LED(2).on()
+    else:
+        LED(2).off()
 
 LED(2).off()
 LED(1).on()  # Verbonden
@@ -54,10 +79,10 @@ def send_all(client, data):
 def send_code(code):
     # 1. Startbit sturen (hoog)
     to_zumo.value(1)
-    time.sleep_ms(10)
+    time.sleep_ms(20)
 
     # 2. Verzend de 8 databitjes (MSB → LSB)
-    for i in range(7, -1, -1):
+    for i in range(8):  # LSB → MSB
         bit = (code >> i) & 1
         to_zumo.value(bit)
         time.sleep_ms(10)
@@ -78,14 +103,12 @@ while True:
     request = str(request)
 
     if "/capture" in request:
-        print("Nieuwe foto maken...")
         img = sensor.snapshot()
         img.rotation_corr(z_rotation=180)
         buffered_image = img.compress(quality=60)
         client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nFoto genomen")
 
     elif "/approve" in request:
-        print("Foto goedgekeurd")
         LED(3).on()
         client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nVolgende foto")
         LED(3).off()
@@ -101,10 +124,10 @@ while True:
         try:
             val_str = request.split("val=")[1].split()[0].split("&")[0]
             waarde = int(val_str)
-            print("🎯 Ontvangen waarde:", waarde)
 
             # Hier kun je de waarde gebruiken, of direct doorsturen:
             send_code(waarde)
+            print("dit stuur ik:", waarde)
 
             client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nWaarde ontvangen: %d" % waarde)
         except Exception as e:
@@ -112,10 +135,8 @@ while True:
             client.send("HTTP/1.1 400 Bad Request\r\n\r\n")
 
     else:
-        client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
-        client.send("<h1>Commando's:</h1>")
-        client.send("<a href='/capture'>Capture</a><br>")
-        client.send("<a href='/getphoto'>Bekijk foto</a><br>")
-        client.send("<a href='/approve'>Goedkeuren</a><br>")
+        LED(3).on()
+        LED(2).on()
+        LED(1).on()
 
     client.close()

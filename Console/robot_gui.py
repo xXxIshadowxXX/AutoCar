@@ -51,7 +51,7 @@ def download_and_process():
                 requests.get(f"http://{ROBOT_IP}/approve", timeout=2)
 
     except Exception as e:
-        label_result.config(text=f"Fout: {e}")
+        label_result.config(text=f"Fout")
 
     # Herhaal
     root.after(1, download_and_process)
@@ -227,6 +227,7 @@ def detect_haaientand(img_np):
 
     return "Geen bord"
 
+
 def lijnvolg_analyse_thread(img_np):
     if lijn_lock.locked():
         return  # vorige is nog bezig
@@ -236,31 +237,32 @@ def lijnvolg_analyse_thread(img_np):
             gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
             y = 150  # vaste hoogte waarop je analyseert
 
-            # === Visuele debuglijn trekken ===
-            cv2.line(img_np, (0, y), (img_np.shape[1]-1, y), (255, 0, 0), 2)  # rode lijn
-
             row = gray[y, :]
             zwarte_punten = np.where(row < 80)[0]
 
-            if len(zwarte_punten) < 2:
-                print("Niet genoeg zwarte punten")
-                return
+            if len(zwarte_punten) == 0:
+                print("Geen lijn gevonden")
+                angle = 45  # Recht vooruit als niets wordt gezien
+            elif len(zwarte_punten) < 10:
+                # Te weinig zwarte pixels - vermoedelijk 1 zijde zichtbaar
+                if np.mean(zwarte_punten) < gray.shape[1] // 2:
+                    print("Alleen links zichtbaar → stuur links")
+                    angle = 0
+                else:
+                    print("Alleen rechts zichtbaar → stuur rechts")
+                    angle = 90
+            else:
+                # Normale lijnvolging
+                left = zwarte_punten[0]
+                right = zwarte_punten[-1]
+                center = (left + right) // 2
 
-            left = zwarte_punten[0]
-            right = zwarte_punten[-1]
-            center = (left + right) // 2
-
-            # === Offset & mapping naar stuurhoek ===
-            beeld_midden = gray.shape[1] // 2  # 160 bij QVGA
-            offset = center - beeld_midden
-            max_offset = beeld_midden
-
-            # Clamp offset tussen -160 en 160
-            offset = max(-max_offset, min(max_offset, offset))
-
-            # Map naar 0–90: -160 → 0, 0 → 45, +160 → 90
-            angle = int((offset + max_offset) * (90 / (2 * max_offset)))
-            print(f"Offset: {offset}  →  Stuurhoek: {angle}")
+                beeld_midden = gray.shape[1] // 2  # 160 bij QVGA
+                offset = center - beeld_midden
+                max_offset = beeld_midden
+                offset = max(-max_offset, min(max_offset, offset))
+                angle = int((offset + max_offset) * (90 / (2 * max_offset)))
+                print(f"Offset: {offset}  →  Stuurhoek: {angle}")
 
             try:
                 requests.get(f"http://{ROBOT_IP}/setwaarde?val={angle}", timeout=1.5)
@@ -268,8 +270,7 @@ def lijnvolg_analyse_thread(img_np):
                 print(f"Netwerkfout: {net_error}")
 
         except Exception as e:
-            print(f"Interne fout lijnanalyse: {e}")
-
+            print(f"Interne fout lijnanalyse")
 
 # GUI setup
 root = tk.Tk()
