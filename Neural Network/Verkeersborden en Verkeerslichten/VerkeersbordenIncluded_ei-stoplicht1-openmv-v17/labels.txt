@@ -1,0 +1,6 @@
+background
+Stoplicht_Groen
+Stoplicht_Oranje
+Stoplicht_Rood
+Verkeersbord_50
+Verkeersbord_Stop
