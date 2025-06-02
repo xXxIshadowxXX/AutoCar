@@ -5,8 +5,18 @@ from io import BytesIO
 import time
 import cv2
 import numpy as np
+import threading
 
-ROBOT_IP = "192.168.137.15"  # Zet hier jouw Nicla IP
+lijn_lock = threading.Lock()
+
+# Vraag gebruiker om laatste IP-deel via console
+try:
+    ip_suffix = input("Geef laatste getal van het IP-adres (bijv. 15 voor 192.168.137.15): ").strip()
+    ROBOT_IP = f"192.168.137.{ip_suffix}"
+except Exception as e:
+    print("❌ Ongeldige invoer. Standaard IP gebruikt.")
+    ROBOT_IP = "192.168.137.15"
+
 
 def download_and_process():
     try:
@@ -18,6 +28,7 @@ def download_and_process():
         if "image" in resp.headers.get("Content-Type", ""):
             img = Image.open(BytesIO(resp.content)).convert("RGB")
             img_np = np.array(img)
+            threading.Thread(target=lijnvolg_analyse_thread, args=(img_np,), daemon=True).start()
 
             # Detectie
             result_text = detect_verboden_toegang(img_np)
@@ -87,7 +98,6 @@ def detect_verplicht_links(img_np):
 
     return "Geen bord"
 
-
 def detect_voorrangsbord(img_np):
     import cv2
     import numpy as np
@@ -122,7 +132,6 @@ def detect_voorrangsbord(img_np):
                     return "Voorrangsbord"
 
     return "Geen bord"
-
 
 def detect_verboden_toegang(img_np):
     import cv2
@@ -177,7 +186,6 @@ def detect_verboden_toegang(img_np):
 
     return "Geen bord"
 
-
 def detect_haaientand(img_np):
     import cv2
     import numpy as np
@@ -218,6 +226,50 @@ def detect_haaientand(img_np):
         return "Haaientand-bord"
 
     return "Geen bord"
+
+def lijnvolg_analyse_thread(img_np):
+    if lijn_lock.locked():
+        return  # vorige is nog bezig
+
+    with lijn_lock:
+        try:
+            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            y = 150  # vaste hoogte waarop je analyseert
+
+            # === Visuele debuglijn trekken ===
+            cv2.line(img_np, (0, y), (img_np.shape[1]-1, y), (255, 0, 0), 2)  # rode lijn
+
+            row = gray[y, :]
+            zwarte_punten = np.where(row < 80)[0]
+
+            if len(zwarte_punten) < 2:
+                print("Niet genoeg zwarte punten")
+                return
+
+            left = zwarte_punten[0]
+            right = zwarte_punten[-1]
+            center = (left + right) // 2
+
+            # === Offset & mapping naar stuurhoek ===
+            beeld_midden = gray.shape[1] // 2  # 160 bij QVGA
+            offset = center - beeld_midden
+            max_offset = beeld_midden
+
+            # Clamp offset tussen -160 en 160
+            offset = max(-max_offset, min(max_offset, offset))
+
+            # Map naar 0–90: -160 → 0, 0 → 45, +160 → 90
+            angle = int((offset + max_offset) * (90 / (2 * max_offset)))
+            print(f"Offset: {offset}  →  Stuurhoek: {angle}")
+
+            try:
+                requests.get(f"http://{ROBOT_IP}/setwaarde?val={angle}", timeout=1.5)
+            except requests.RequestException as net_error:
+                print(f"Netwerkfout: {net_error}")
+
+        except Exception as e:
+            print(f"Interne fout lijnanalyse: {e}")
+
 
 # GUI setup
 root = tk.Tk()
