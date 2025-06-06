@@ -79,7 +79,7 @@ def send_all(client, data):
 def send_code(code):
     # 1. Startbit sturen (hoog)
     to_zumo.value(1)
-    time.sleep_ms(20)
+    time.sleep_ms(10)
 
     # 2. Verzend de 8 databitjes (MSB → LSB)
     for i in range(8):  # LSB → MSB
@@ -96,38 +96,32 @@ print("Initieel foto maken...")
 img = sensor.snapshot()
 img.rotation_corr(z_rotation=180)
 buffered_image = img.compress(quality=60)
+waarde = 45
 
 while True:
     client, addr = s.accept()
     request = client.recv(1024)
     request = str(request)
 
-    if "/capture" in request:
-        img = sensor.snapshot()
-        img.rotation_corr(z_rotation=180)
-        buffered_image = img.compress(quality=60)
-        client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nFoto genomen")
-
-    elif "/approve" in request:
+    if "/approve" in request:
         LED(3).on()
         client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nVolgende foto")
         LED(3).off()
 
     elif "/getphoto" in request:
-        if buffered_image:
-            client.send("HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\n\r\n")
-            send_all(client, buffered_image)
-        else:
-            client.send("HTTP/1.1 404 Not Found\r\n\r\nNog geen foto")
+        img = sensor.snapshot()
+        img.rotation_corr(z_rotation=180)
+        jpeg = img.compress(quality=50)  # eerst verwerken
+        send_code(waarde)
+        client.send("HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\n\r\n")
+        send_all(client, jpeg)
 
     elif "/setwaarde?val=" in request:
         try:
             val_str = request.split("val=")[1].split()[0].split("&")[0]
             waarde = int(val_str)
 
-            # Hier kun je de waarde gebruiken, of direct doorsturen:
-            send_code(waarde)
-            print("dit stuur ik:", waarde)
+            # Hier kun je de waarde gebruiken, of direct doorsturen
 
             client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nWaarde ontvangen: %d" % waarde)
         except Exception as e:

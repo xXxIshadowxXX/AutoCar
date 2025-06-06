@@ -23,7 +23,7 @@ except Exception:
 
 def download_and_process():
     try:
-        requests.get(f"http://{ROBOT_IP}/capture", timeout=5)
+        ##requests.get(f"http://{ROBOT_IP}/capture", timeout=5)
         uid = time.time()
         resp = requests.get(f"http://{ROBOT_IP}/getphoto?uid={uid}", timeout=5)
 
@@ -32,34 +32,7 @@ def download_and_process():
             img_np = np.array(img)
             threading.Thread(target=lijnvolg_analyse_thread, args=(img_np,), daemon=True).start()
 
-            # Parallelle detectie
-            def run_detectie(func, result_container, lock):
-                result = func(img_np)
-                if result != "Geen bord":
-                    with lock:
-                        if result_container[0] == "Geen bord":
-                            result_container[0] = result
 
-            result_container = ["Geen bord"]
-            lock = threading.Lock()
-            threads = []
-
-            detectie_funcs = [
-                detect_verboden_toegang,
-                detect_haaientand,
-                detect_voorrangsbord,
-                detect_verplicht_links,
-            ]
-
-            for func in detectie_funcs:
-                t = threading.Thread(target=run_detectie, args=(func, result_container, lock))
-                t.start()
-                threads.append(t)
-
-            for t in threads:
-                t.join(timeout=0.4)
-
-            result_text = result_container[0]
 
             # === Teken rode lijn op hoogte y ===
             y_lijn = 100
@@ -69,14 +42,7 @@ def download_and_process():
             photo = ImageTk.PhotoImage(img_overlay.resize((320, 240)))
             canvas.create_image(0, 0, anchor=tk.NW, image=photo)
             canvas.image = photo
-            label_result.config(text=f"Herkenning: {result_text}")
-
-            if result_text != "Geen bord":
-                try:
-                    requests.get(f"http://{ROBOT_IP}/approve", timeout=2)
-                except:
-                    pass
-
+            
     except:
         label_result.config(text="Fout")
 
@@ -127,6 +93,7 @@ def lijnvolg_analyse_thread(img_np):
             max_offset = beeld_midden
             offset = max(-max_offset, min(max_offset, offset))
             angle = int((offset + max_offset) * (90 / (2 * max_offset)))
+            print(f"Left: {left}, Right: {right}, Center: {center}, Beeld_midden: {beeld_midden}, Offset: {offset}")
 
         angle_buffer.append(angle)
         gemiddelde_angle = int(sum(angle_buffer) / len(angle_buffer))
@@ -174,7 +141,6 @@ def detect_verplicht_links(img_np):
 
     return "Geen bord"
 
-
 def detect_voorrangsbord(img_np):
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     yellow_mask = cv2.inRange(hsv, (20, 100, 100), (35, 255, 255))
@@ -198,7 +164,6 @@ def detect_voorrangsbord(img_np):
                 return "Voorrangsbord"
 
     return "Geen bord"
-
 
 def detect_verboden_toegang(img_np):
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
@@ -242,7 +207,6 @@ def detect_verboden_toegang(img_np):
                 return "Verboden toegang"
 
     return "Geen bord"
-
 
 def detect_haaientand(img_np):
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
