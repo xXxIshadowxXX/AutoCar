@@ -1,7 +1,7 @@
-#include <Zumo32U4OLED.h>  // ★ OLED-klasse include
+#include <Zumo32U4OLED.h>  // OLED-klasse include
 #include <Zumo32U4.h>
 
-Zumo32U4OLED oled;          // ★ OLED instance
+Zumo32U4OLED oled;          // OLED instance
 Zumo32U4Motors motors;
 
 const int fromNicla = 14;
@@ -15,12 +15,12 @@ void setup() {
   pinMode(fromNicla, INPUT_PULLUP);
   Serial.begin(9600);
 
-  // ★ OLED initialisatie
+  // OLED initialisatie
   oled.init();             // Init de SH1106 OLED :contentReference[oaicite:4]{index=4}
   oled.setLayout8x2();     // Bepaal een 8×2 tekst-layout :contentReference[oaicite:5]{index=5}
   oled.clear();            // Maak het scherm leeg
   
-  // ★ Welkomstboodschap op OLED
+  // Welkomstboodschap op OLED
   oled.gotoXY(0, 0);
   oled.print(F("Wachten op"));
   oled.gotoXY(0, 1);
@@ -62,7 +62,7 @@ void interpretCommand(byte code) {
   bool noodstop = (code & 0b10000000) >> 7;
   byte actieCode = code & 0b01111111;
 
-  // ★ OLED updaten: duidelijk maken welke byte binnenkomt
+  // OLED updaten: duidelijk maken welke byte binnenkomt
   oled.clear();
   oled.gotoXY(0, 0);
   oled.print(F("Byte:"));
@@ -70,7 +70,7 @@ void interpretCommand(byte code) {
   oled.gotoXY(0, 1);
   oled.print(noodstop ? F("Noodstop") : F("Actie:"));
   oled.print(actieCode);
-  oled.display();  // ★ Zorg dat het buffer zichtbaar wordt
+  oled.display();  // Zorg dat het buffer zichtbaar wordt
 
   lastCommandTime = millis();
 
@@ -109,9 +109,9 @@ void interpretCommand(byte code) {
 
 void handleMovementCommand(byte actieCode) {
   const int standaardSnelheid = 40;
-  const int correctieLinks = 5;
+  const int correctieLinks = 0;
 
-  // ★ OLED updaten: toon de movement-code
+  // OLED updaten: toon de movement-code
   oled.clear();
   oled.gotoXY(0, 0);
   oled.print(F("Move:"));
@@ -126,7 +126,7 @@ void handleMovementCommand(byte actieCode) {
     oled.gotoXY(0, 1);
     oled.print(F("L:"));
     oled.print(-draaiSpeed);
-    oled.print(F(" R:"));
+    oled.print(F("R:"));
     oled.print(draaiSpeed);
     oled.display();
 
@@ -144,7 +144,7 @@ void handleMovementCommand(byte actieCode) {
     oled.gotoXY(0, 1);
     oled.print(F("L:"));
     oled.print(snelheidLinks + correctieLinks);
-    oled.print(F(" R:"));
+    oled.print(F("R:"));
     oled.print(snelheidRechts);
     oled.display();
 
@@ -156,7 +156,7 @@ void handleMovementCommand(byte actieCode) {
     oled.gotoXY(0, 0);
     oled.print(F("Rechtdoor"));
     oled.gotoXY(0, 1);
-    oled.print(F("L:30 R:30"));
+    oled.print(F("L:30R:30"));
     oled.display();
 
     motors.setLeftSpeed(standaardSnelheid + correctieLinks);
@@ -169,11 +169,11 @@ void handleMovementCommand(byte actieCode) {
 
     oled.clear();
     oled.gotoXY(0, 0);
-    oled.print(F("Schuin L←"));
+    oled.print(F("Schuin L"));
     oled.gotoXY(0, 1);
     oled.print(F("L:"));
     oled.print(snelheidLinks + correctieLinks);
-    oled.print(F(" R:"));
+    oled.print(F("R:"));
     oled.print(snelheidRechts);
     oled.display();
 
@@ -184,11 +184,11 @@ void handleMovementCommand(byte actieCode) {
     int draaiSpeed = 50;
     oled.clear();
     oled.gotoXY(0, 0);
-    oled.print(F("Draaien L←"));
+    oled.print(F("Draaien L"));
     oled.gotoXY(0, 1);
     oled.print(F("L:"));
     oled.print(draaiSpeed);
-    oled.print(F(" R:"));
+    oled.print(F("R:"));
     oled.print(-draaiSpeed);
     oled.display();
 
@@ -303,6 +303,9 @@ void executeCurrentCommand() {
   if (currentCommand <= 92) {
     handleMovementCommand(currentCommand);
   }
+  else if (currentCommand > 92){
+    handleTrafficSignCommand(currentCommand);
+  }
 }
 
 void loop() {
@@ -320,7 +323,7 @@ void loop() {
     delay(10);
   }
 
-  if (isMoving && currentCommand <= 92) {
+  if (isMoving) {
     executeCurrentCommand();
   }
 }
