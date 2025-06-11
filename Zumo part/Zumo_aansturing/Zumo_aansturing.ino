@@ -24,7 +24,7 @@ void setup() {
   oled.gotoXY(0, 0);
   oled.print(F("Wachten op"));
   oled.gotoXY(0, 1);
-  oled.print(F("Nicla data..."));
+  oled.print(F("Nicdata"));
   oled.display();          // Zet buffer op scherm :contentReference[oaicite:6]{index=6}
 }
 
@@ -32,18 +32,20 @@ bool waitForStartBit() {
   unsigned long startTime = millis();
   const unsigned long WAIT_TIMEOUT = 50;
 
-  while (digitalRead(fromNicla) == HIGH) {
-    if (millis() - startTime > WAIT_TIMEOUT) {
-      return false;
+  while (millis() - startTime < WAIT_TIMEOUT) {
+    if (digitalRead(fromNicla) == LOW) {
+      delayMicroseconds(10000); // Small debounce
+      if (digitalRead(fromNicla) == LOW) {
+        return true; // Confirmed start bit
+      }
     }
-    delay(1);
+    delayMicroseconds(100);  // Reduce CPU usage
   }
-  delay(10);
-  return true;
+  return false;
 }
 
 bool receiveBit() {
-  delay(10);
+  delayMicroseconds(10000); // Small debounce
   return !digitalRead(fromNicla);
 }
 
@@ -106,7 +108,7 @@ void interpretCommand(byte code) {
 }
 
 void handleMovementCommand(byte actieCode) {
-  const int standaardSnelheid = 60;
+  const int standaardSnelheid = 40;
   const int correctieLinks = 5;
 
   // ★ OLED updaten: toon de movement-code
@@ -117,7 +119,7 @@ void handleMovementCommand(byte actieCode) {
   oled.display();
 
   if (actieCode < 10) {
-    int draaiSpeed = 70;
+    int draaiSpeed = 50;
     oled.clear();
     oled.gotoXY(0, 0);
     oled.print(F("Draaien R→"));
@@ -133,8 +135,8 @@ void handleMovementCommand(byte actieCode) {
   }
   else if (actieCode <= 44) {
     int verschil = 45 - actieCode;
-    int snelheidLinks = standaardSnelheid;
-    int snelheidRechts = standaardSnelheid - verschil;
+    int snelheidLinks = standaardSnelheid - verschil;
+    int snelheidRechts = standaardSnelheid;
 
     oled.clear();
     oled.gotoXY(0, 0);
@@ -162,8 +164,8 @@ void handleMovementCommand(byte actieCode) {
   }
   else if (actieCode <= 80) {
     int verschil = actieCode - 45;
-    int snelheidLinks = standaardSnelheid - verschil;
-    int snelheidRechts = standaardSnelheid;
+    int snelheidLinks = standaardSnelheid;
+    int snelheidRechts = standaardSnelheid - verschil;
 
     oled.clear();
     oled.gotoXY(0, 0);
@@ -179,7 +181,7 @@ void handleMovementCommand(byte actieCode) {
     motors.setRightSpeed(snelheidRechts);
   }
   else if (actieCode <= 90) {
-    int draaiSpeed = 70;
+    int draaiSpeed = 50;
     oled.clear();
     oled.gotoXY(0, 0);
     oled.print(F("Draaien L←"));
@@ -314,10 +316,11 @@ void loop() {
       lastCode = receivedCode;
     }
   }
+  else{
+    delay(10);
+  }
 
   if (isMoving && currentCommand <= 92) {
     executeCurrentCommand();
   }
-
-  delay(10);
 }
