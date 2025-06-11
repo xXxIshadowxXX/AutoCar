@@ -35,7 +35,7 @@ def download_and_process():
 
 
             # === Teken rode lijn op hoogte y ===
-            y_lijn = 100
+            y_lijn = 120
             img_overlay = img.copy()
             draw = ImageDraw.Draw(img_overlay)
             draw.line([(0, y_lijn), (img_overlay.width, y_lijn)], fill=(255, 0, 0), width=2)
@@ -64,40 +64,35 @@ def lijnvolg_analyse_thread(img_np):
 
     try:
         gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-        y = 100  # vaste hoogte voor analyse
 
-        if y >= gray.shape[0]:
-            print(f"⚠️ Hoogte {y} buiten beeldgrootte")
-            return
+        y = 120  # analyse hoogte
+        row = gray[y, :]  # GEEN ROI MEER -> volledige breedte
 
-        row = gray[y, :]
-        threshold = np.percentile(row, 10)  # adaptieve drempel
-        zwarte_punten = np.where(row < threshold)[0]
+        midden = row.shape[0] // 2
+        threshold = np.percentile(row, 20)
 
-        if len(zwarte_punten) == 0:
-            print("Geen lijn gevonden")
-            angle = 45  # rechtdoor als niks zichtbaar
-        elif len(zwarte_punten) < 10:
-            if np.mean(zwarte_punten) < gray.shape[1] // 2:
-                print("Alleen links zichtbaar → stuur links")
-                angle = 0
-            else:
-                print("Alleen rechts zichtbaar → stuur rechts")
-                angle = 90
-        else:
-            left = zwarte_punten[0]
-            right = zwarte_punten[-1]
-            center = (left + right) // 2
-            beeld_midden = gray.shape[1] // 2
-            offset = center - beeld_midden
-            max_offset = beeld_midden
-            offset = max(-max_offset, min(max_offset, offset))
-            angle = int((offset + max_offset) * (90 / (2 * max_offset)))
-            print(f"Left: {left}, Right: {right}, Center: {center}, Beeld_midden: {beeld_midden}, Offset: {offset}")
+        indices = np.where(row < threshold)[0]
+
+        # Links: alleen indices links van midden
+        links = indices[indices < midden]
+        left = links.max() if links.size > 0 else 0
+
+        # Rechts: alleen indices rechts van midden
+        rechts = indices[indices >= midden]
+        right = rechts.min() if rechts.size > 0 else row.shape[0] - 1
+
+        center = (left + right) // 2
+        beeld_midden = row.shape[0] // 2
+        offset = center - beeld_midden
+        max_offset = beeld_midden
+        offset = max(-max_offset, min(max_offset, offset))
+        angle = int((offset + max_offset) * (90 / (2 * max_offset)))
+
+        print(f"Left: {left}, Right: {right}, Center: {center}, Offset: {offset} → Stuurhoek: {angle}")
 
         angle_buffer.append(angle)
         gemiddelde_angle = int(sum(angle_buffer) / len(angle_buffer))
-        print(f"Offset: {offset} → Stuurhoek: {gemiddelde_angle} (gemiddelde van {len(angle_buffer)})")
+        print(f"Gemiddelde stuurhoek: {gemiddelde_angle}")
 
         stuurhoek_naar_robot_async(gemiddelde_angle)
 
