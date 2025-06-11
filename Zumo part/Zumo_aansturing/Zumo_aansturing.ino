@@ -109,7 +109,8 @@ void interpretCommand(byte code) {
 
 void handleMovementCommand(byte actieCode) {
   const int standaardSnelheid = 40;
-  const int correctieLinks = 0;
+  const int correctieLinks = 5;
+  const int correctieRechts = 0;
 
   // OLED updaten: toon de movement-code
   oled.clear();
@@ -122,7 +123,7 @@ void handleMovementCommand(byte actieCode) {
     int draaiSpeed = 50;
     oled.clear();
     oled.gotoXY(0, 0);
-    oled.print(F("Draaien R→"));
+    oled.print(F("Draaien L"));
     oled.gotoXY(0, 1);
     oled.print(F("L:"));
     oled.print(-draaiSpeed);
@@ -135,37 +136,8 @@ void handleMovementCommand(byte actieCode) {
   }
   else if (actieCode <= 44) {
     int verschil = 45 - actieCode;
-    int snelheidLinks = standaardSnelheid - verschil;
+    int snelheidLinks = standaardSnelheid - verschil * 1.5;
     int snelheidRechts = standaardSnelheid;
-
-    oled.clear();
-    oled.gotoXY(0, 0);
-    oled.print(F("Schuin R→"));
-    oled.gotoXY(0, 1);
-    oled.print(F("L:"));
-    oled.print(snelheidLinks + correctieLinks);
-    oled.print(F("R:"));
-    oled.print(snelheidRechts);
-    oled.display();
-
-    motors.setLeftSpeed(snelheidLinks + correctieLinks);
-    motors.setRightSpeed(snelheidRechts);
-  }
-  else if (actieCode == 45) {
-    oled.clear();
-    oled.gotoXY(0, 0);
-    oled.print(F("Rechtdoor"));
-    oled.gotoXY(0, 1);
-    oled.print(F("L:30R:30"));
-    oled.display();
-
-    motors.setLeftSpeed(standaardSnelheid + correctieLinks);
-    motors.setRightSpeed(standaardSnelheid);
-  }
-  else if (actieCode <= 80) {
-    int verschil = actieCode - 45;
-    int snelheidLinks = standaardSnelheid;
-    int snelheidRechts = standaardSnelheid - verschil;
 
     oled.clear();
     oled.gotoXY(0, 0);
@@ -178,7 +150,36 @@ void handleMovementCommand(byte actieCode) {
     oled.display();
 
     motors.setLeftSpeed(snelheidLinks + correctieLinks);
-    motors.setRightSpeed(snelheidRechts);
+    motors.setRightSpeed(snelheidRechts + correctieRechts);
+  }
+  else if (actieCode == 45) {
+    oled.clear();
+    oled.gotoXY(0, 0);
+    oled.print(F("Rechtdoor"));
+    oled.gotoXY(0, 1);
+    oled.print(F("L:30R:30"));
+    oled.display();
+
+    motors.setLeftSpeed(standaardSnelheid + correctieLinks);
+    motors.setRightSpeed(standaardSnelheid + correctieRechts);
+  }
+  else if (actieCode <= 80) {
+    int verschil = actieCode - 45;
+    int snelheidLinks = standaardSnelheid;
+    int snelheidRechts = standaardSnelheid - verschil * 1.5;
+
+    oled.clear();
+    oled.gotoXY(0, 0);
+    oled.print(F("Schuin R"));
+    oled.gotoXY(0, 1);
+    oled.print(F("L:"));
+    oled.print(snelheidLinks + correctieLinks);
+    oled.print(F("R:"));
+    oled.print(snelheidRechts);
+    oled.display();
+
+    motors.setLeftSpeed(snelheidLinks + correctieLinks);
+    motors.setRightSpeed(snelheidRechts + correctieRechts);
   }
   else if (actieCode <= 90) {
     int draaiSpeed = 50;
@@ -291,7 +292,7 @@ void handleTrafficSignCommand(byte actieCode) {
       break;
     default:
       oled.gotoXY(0, 0);
-      oled.print(F("Onbekend bord"));
+      oled.print(F("Onbekend"));
       oled.gotoXY(0, 1);
       oled.print(actieCode);
       break;
@@ -309,19 +310,46 @@ void executeCurrentCommand() {
 }
 
 void loop() {
+  static byte opslagarray[3] = {0};
+  static byte lastCode = 0;
+  static bool allowed = false;
+
   if (waitForStartBit()) {
     byte receivedCode = receiveByte();
     Serial.print(F("Ontvangen byte: "));
     Serial.println(receivedCode, DEC);
 
     if (receivedCode != lastCode) {
-      interpretCommand(receivedCode);
-      lastCode = receivedCode;
+      if (allowed) {
+        interpretCommand(receivedCode);
+        lastCode = receivedCode;
+        allowed = false; // reset
+      }
+      else if (receivedCode <= 10 && receivedCode >= 0 || receivedCode >= 80 && receivedCode <= 90 ) {
+        // soms krijgt de zumo een 0 of een 1 binnen terwijl deze ongewenst is.
+        // dus dit zorgt ervoor dat de waardes stabiel moeten zijn voordat het geaccepteerd wordt.
+        // schuif waarden naar rechts
+        for (int i = 2; i > 0; i--) {
+          opslagarray[i] = opslagarray[i - 1];
+        }
+        opslagarray[0] = receivedCode;
+
+        // check of alle 3 waardes gelijk zijn
+        if (opslagarray[0] == opslagarray[1] && opslagarray[1] == opslagarray[2]) {
+          allowed = true;
+        } else {
+          allowed = false;
+        }
+      }
+      else{
+        // voor alle andere waardes van recieveCode
+        allowed = true;
+      }
     }
-  }
-  else{
+  } else {
     delay(10);
   }
+  
 
   if (isMoving) {
     executeCurrentCommand();
