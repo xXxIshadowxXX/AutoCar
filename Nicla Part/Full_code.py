@@ -71,11 +71,12 @@ while True:
         send_code(waarde)
         client.send("HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\n\r\n")
         send_all(client, jpeg)
+    waarde = 92
 
-    elif "/setwaarde?val=" in req:
+    if "/setwaarde?val=" in req:
         try:
             val = int(req.split("val=")[1].split()[0].split("&")[0])
-            waarde = val
+            #waarde = val
             client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nWaarde ontvangen: %d" % waarde)
         except:
             client.send("HTTP/1.1 400 Bad Request\r\n\r\n")
