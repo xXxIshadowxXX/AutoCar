@@ -44,7 +44,6 @@ bool waitForStartBit() {
 
   while (millis() - startTime < WAIT_TIMEOUT) {
     if (digitalRead(fromNicla) == LOW) {
-      delayMicroseconds(10000); // Small debounce
       delayMicroseconds(200); // Small debounce
       if (digitalRead(fromNicla) == LOW) {
         delayMicroseconds(9800);
