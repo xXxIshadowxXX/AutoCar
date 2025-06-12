@@ -45,7 +45,9 @@ bool waitForStartBit() {
   while (millis() - startTime < WAIT_TIMEOUT) {
     if (digitalRead(fromNicla) == LOW) {
       delayMicroseconds(10000); // Small debounce
+      delayMicroseconds(200); // Small debounce
       if (digitalRead(fromNicla) == LOW) {
+        delayMicroseconds(9800);
         return true; // Confirmed start bit
       }
     }
@@ -148,8 +150,8 @@ void stuurAchteruit(){
 }
 
 void stuurStop(){
-  motors.setLeftSpeed(snelheidStop);
-  motors.setRightSpeed(snelheidStop);
+  motors.setLeftSpeed(stopSnelheid);
+  motors.setRightSpeed(stopSnelheid);
 }
 
 
@@ -329,6 +331,7 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Code:96"));
 
       stuurRechtdoorLangzaam();
+      //TODO: Deze tijden kloppen nog niet moeten nog aangepast worden voor reeële tijden.
       delay(1000);
       stuurStop();
       delay(1000);
@@ -415,9 +418,10 @@ void executeCurrentCommand() {
 }
 
 void loop() {
-  static byte opslagarray[3] = {0};
-  static byte lastCode = 0;
+  static byte opslagarray[3] = {255, 255, 255}; // initialiseer met onmogelijke waarde
+  static byte lastCode = 255; // onmogelijke startwaarde
   static bool allowed = false;
+  static bool stableCodeIsUnder10 = false;
 
   if (waitForStartBit()) {
     byte receivedCode = receiveByte();
@@ -425,38 +429,37 @@ void loop() {
     Serial.println(receivedCode, DEC);
 
     if (receivedCode != lastCode) {
-      if (allowed) {
+      if (allowed && receivedCode > 10 || stableCodeIsUnder10 && allowed) {
         interpretCommand(receivedCode);
         lastCode = receivedCode;
         allowed = false; // reset
       }
-      else if (receivedCode <= 10 && receivedCode >= 0 || receivedCode >= 80 && receivedCode <= 90 ) {
+      else if (receivedCode <= 10 && receivedCode >= 0 ) {
         // soms krijgt de zumo een 0 of een 1 binnen terwijl deze ongewenst is.
         // dus dit zorgt ervoor dat de waardes stabiel moeten zijn voordat het geaccepteerd wordt.
         // schuif waarden naar rechts
-        for (int i = 2; i > 0; i--) {
-          opslagarray[i] = opslagarray[i - 1];
-        }
+        opslagarray[2] = opslagarray[1];
+        opslagarray[1] = opslagarray[0];
         opslagarray[0] = receivedCode;
 
         // check of alle 3 waardes gelijk zijn
         if (opslagarray[0] == opslagarray[1] && opslagarray[1] == opslagarray[2]) {
           allowed = true;
+          stableCodeIsUnder10 == true;
         } else {
+          // stop commando zodat het signaal stabiel kan worden.
+          interpretCommand(92);
           allowed = false;
         }
       }
       else{
-        // voor alle andere waardes van recieveCode
+        // reset opslagarray
+        opslagarray[0] = opslagarray[1] = opslagarray[2] = 255;
         allowed = true;
+        stableCodeIsUnder10 = false;
       }
     }
   } else {
     delay(10);
-  }
-  
-
-  if (isMoving) {
-    executeCurrentCommand();
   }
 }
