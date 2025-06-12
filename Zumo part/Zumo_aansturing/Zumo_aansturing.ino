@@ -11,6 +11,16 @@ bool isMoving = false;
 unsigned long lastCommandTime = 0;
 const unsigned long COMMAND_TIMEOUT = 2000;
 
+// Wiel aansturing
+const int standaardSnelheid = 40;
+const int langzaamSnelheid = 30;
+const int snelSnelheid = 60;
+const int stopSnelheid = 0;
+
+const int correctieLinks = 5; //kleine correctie nodig, links is anders langzamer
+const int correctieRechts = 0;
+const int draaiSpeed = 50;
+
 void setup() {
   pinMode(fromNicla, INPUT_PULLUP);
   Serial.begin(9600);
@@ -107,11 +117,43 @@ void interpretCommand(byte code) {
   }
 }
 
-void handleMovementCommand(byte actieCode) {
-  const int standaardSnelheid = 40;
-  const int correctieLinks = 5;
-  const int correctieRechts = 0;
+void stuurLinks(){
+  motors.setLeftSpeed(-draaiSpeed + correctieLinks);
+  motors.setRightSpeed(draaiSpeed);
+}
 
+void stuurRechtdoor(){
+  motors.setLeftSpeed(standaardSnelheid + correctieLinks);
+  motors.setRightSpeed(standaardSnelheid + correctieRechts);
+}
+
+void stuurRechtdoorLangzaam(){
+  motors.setLeftSpeed(langzaamSnelheid + correctieLinks);
+  motors.setRightSpeed(langzaamSnelheid + correctieRechts);
+}
+
+void stuurRechtdoorSnel(){
+  motors.setLeftSpeed(snelSnelheid + correctieLinks);
+  motors.setRightSpeed(snelSnelheid + correctieRechts);
+}
+
+void stuurRechts(){
+  motors.setLeftSpeed(draaiSpeed + correctieLinks);
+  motors.setRightSpeed(-draaiSpeed);
+}
+
+void stuurAchteruit(){
+  motors.setLeftSpeed(-standaardSnelheid + correctieLinks);
+  motors.setRightSpeed(-standaardSnelheid);
+}
+
+void stuurStop(){
+  motors.setLeftSpeed(snelheidStop);
+  motors.setRightSpeed(snelheidStop);
+}
+
+
+void handleMovementCommand(byte actieCode) {
   // OLED updaten: toon de movement-code
   oled.clear();
   oled.gotoXY(0, 0);
@@ -119,6 +161,7 @@ void handleMovementCommand(byte actieCode) {
   oled.print(actieCode);
   oled.display();
 
+  // Scherp links
   if (actieCode < 10) {
     int draaiSpeed = 50;
     oled.clear();
@@ -131,9 +174,10 @@ void handleMovementCommand(byte actieCode) {
     oled.print(draaiSpeed);
     oled.display();
 
-    motors.setLeftSpeed(-draaiSpeed + correctieLinks);
-    motors.setRightSpeed(draaiSpeed);
+    stuurLinks();
   }
+
+  // Schuin links
   else if (actieCode <= 44) {
     int verschil = 45 - actieCode;
     int snelheidLinks = standaardSnelheid - verschil * 1.5;
@@ -152,6 +196,8 @@ void handleMovementCommand(byte actieCode) {
     motors.setLeftSpeed(snelheidLinks + correctieLinks);
     motors.setRightSpeed(snelheidRechts + correctieRechts);
   }
+
+  // Rijdt rechtdoor
   else if (actieCode == 45) {
     oled.clear();
     oled.gotoXY(0, 0);
@@ -160,9 +206,10 @@ void handleMovementCommand(byte actieCode) {
     oled.print(F("L:30R:30"));
     oled.display();
 
-    motors.setLeftSpeed(standaardSnelheid + correctieLinks);
-    motors.setRightSpeed(standaardSnelheid + correctieRechts);
+    stuurRechtdoor();
   }
+
+  // Schuin rechts
   else if (actieCode <= 80) {
     int verschil = actieCode - 45;
     int snelheidLinks = standaardSnelheid;
@@ -181,6 +228,8 @@ void handleMovementCommand(byte actieCode) {
     motors.setLeftSpeed(snelheidLinks + correctieLinks);
     motors.setRightSpeed(snelheidRechts + correctieRechts);
   }
+
+  // Scherp rechts
   else if (actieCode <= 90) {
     int draaiSpeed = 50;
     oled.clear();
@@ -193,9 +242,10 @@ void handleMovementCommand(byte actieCode) {
     oled.print(-draaiSpeed);
     oled.display();
 
-    motors.setLeftSpeed(draaiSpeed + correctieLinks);
-    motors.setRightSpeed(-draaiSpeed);
+    stuurRechts();
   }
+
+  // Rijdt achteruit
   else if (actieCode == 91) {
     oled.clear();
     oled.gotoXY(0, 0);
@@ -204,9 +254,12 @@ void handleMovementCommand(byte actieCode) {
     oled.print(F("L:-30 R:-30"));
     oled.display();
 
+    stuurAchteruit();
     motors.setLeftSpeed(-standaardSnelheid + correctieLinks);
     motors.setRightSpeed(-standaardSnelheid);
   }
+
+  // Stop met rijden
   else if (actieCode == 92) {
     oled.clear();
     oled.gotoXY(0, 0);
@@ -215,8 +268,7 @@ void handleMovementCommand(byte actieCode) {
     oled.print(F("L:0 R:0"));
     oled.display();
 
-    motors.setLeftSpeed(0);
-    motors.setRightSpeed(0);
+    stuurStop();
   }
   else {
     oled.clear();
@@ -226,8 +278,7 @@ void handleMovementCommand(byte actieCode) {
     oled.print(actieCode);
     oled.display();
 
-    motors.setLeftSpeed(0);
-    motors.setRightSpeed(0);
+    stuurStop();
   }
 }
 
@@ -235,73 +286,115 @@ void handleTrafficSignCommand(byte actieCode) {
   motors.setSpeeds(0, 0);
   oled.clear();
 
-  const int standaardSnelheid = 40;
-  const int correctieLinks = 5;
-
-  const int snelheidLinks = standaardSnelheid + correctieLinks;
-  const int snelheidRechts = standaardSnelheid;
-  const int draaiSnelheid = standaardSnelheid + 10;
-
   switch (actieCode) {
+    // Voorrangs weg
     case 93:
       oled.gotoXY(0, 0);
       oled.print(F("Toegang OK"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:93"));
+      
+      stuurRechtdoor();
       break;
+
+    // Verboden toegang  
     case 94:
       oled.gotoXY(0, 0);
       oled.print(F("Verboden"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:94"));
+      // To Do (nog geen plaats gekregen, dus ik weet niet hoe hij hierop moet reageren)
+      //stuurStop();
+      //delay(1000);
       break;
+
+    // Verplicht links afslaan  
     case 95:
       oled.gotoXY(0, 0);
       oled.print(F("Verplicht links"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:95"));
-      motors.setSpeeds(standaardSnelheid, standaardSnelheid);// rechtdoor
+
+      stuurRechtdoor();
       delay(1000);
-      motors.setLeftSpeed(-draaiSnelheid);
-      motors.setRightSpeed(draaiSnelheid);
+      stuurLinks();
       delay(1000);
       break;
+
+     // Haaientand
     case 96:
       oled.gotoXY(0, 0);
       oled.print(F("Haaietand"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:96"));
+
+      stuurRechtdoorLangzaam();
+      delay(1000);
+      stuurStop();
+      delay(1000);
       break;
+
+    // Snelheid 50km/h
     case 97:
       oled.gotoXY(0, 0);
       oled.print(F("50 km/h"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:97"));
+
+      stuurRechtdoorSnel();
+      delay(3000); // To do: check of dit een nuttige tijd is. We hebben geen bord om auto te vertragen
       break;
+
+    // Stop bord
     case 98:
       oled.gotoXY(0, 0);
       oled.print(F("STOP bord"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:98"));
+
+      stuurStop();
+      delay(2000);
       break;
+
+    // Groen stoplicht
     case 125:
       oled.gotoXY(0, 0);
       oled.print(F("GROEN"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:125"));
+
+      stuurRechtdoor();
       break;
+    
+    //Oranje stoplicht
     case 126:
       oled.gotoXY(0, 0);
       oled.print(F("GEEL"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:126"));
+      
+      stuurRechtdoor(); //to do: mss weghalen
+      delay(1000); //mss weghalen
+      stuurStop();
+      delay(3000);
+      stuurRechtdoor(); // TO do: mss weghalen
       break;
+    
+    // Rood stoplicht
     case 127:
       oled.gotoXY(0, 0);
       oled.print(F("ROOD"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:127"));
+
+      stuurRechtdoor(); //to do: mss weghalen
+      delay(1000); //mss weghalen
+      stuurStop();
+      delay(3000);
+      stuurRechtdoor(); // TO do: mss weghalen
       break;
+    
+    // Onbekend
     default:
       oled.gotoXY(0, 0);
       oled.print(F("Onbekend"));
