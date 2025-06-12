@@ -235,6 +235,13 @@ void handleTrafficSignCommand(byte actieCode) {
   motors.setSpeeds(0, 0);
   oled.clear();
 
+  const int standaardSnelheid = 40;
+  const int correctieLinks = 5;
+
+  const int snelheidLinks = standaardSnelheid + correctieLinks;
+  const int snelheidRechts = standaardSnelheid;
+  const int draaiSnelheid = standaardSnelheid + 10;
+
   switch (actieCode) {
     case 93:
       oled.gotoXY(0, 0);
@@ -250,9 +257,14 @@ void handleTrafficSignCommand(byte actieCode) {
       break;
     case 95:
       oled.gotoXY(0, 0);
-      oled.print(F("Eenrichting"));
+      oled.print(F("Verplicht links"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:95"));
+      motors.setSpeeds(standaardSnelheid, standaardSnelheid);// rechtdoor
+      delay(1000);
+      motors.setLeftSpeed(-draaiSnelheid);
+      motors.setRightSpeed(draaiSnelheid);
+      delay(1000);
       break;
     case 96:
       oled.gotoXY(0, 0);
