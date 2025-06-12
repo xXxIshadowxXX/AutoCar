@@ -408,15 +408,6 @@ void handleTrafficSignCommand(byte actieCode) {
   oled.display();
 }
 
-void executeCurrentCommand() {
-  if (currentCommand <= 92) {
-    handleMovementCommand(currentCommand);
-  }
-  else if (currentCommand > 92){
-    handleTrafficSignCommand(currentCommand);
-  }
-}
-
 void loop() {
   static byte opslagarray[3] = {255, 255, 255}; // initialiseer met onmogelijke waarde
   static byte lastCode = 255; // onmogelijke startwaarde
