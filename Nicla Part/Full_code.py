@@ -68,16 +68,16 @@ while True:
     if "/getphoto" in req:
         img = sensor.snapshot().rotation_corr(z_rotation=180)
         jpeg = img.compress(quality=50)
-        send_code(waarde)
         client.send("HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\n\r\n")
         send_all(client, jpeg)
-    waarde = 92
 
     if "/setwaarde?val=" in req:
         try:
             val = int(req.split("val=")[1].split()[0].split("&")[0])
-            #waarde = val
+            waarde = val
+            send_code(val)  # <-- DIRECT DOORSTUREN
             client.send("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nWaarde ontvangen: %d" % waarde)
+            print(waarde)
         except:
             client.send("HTTP/1.1 400 Bad Request\r\n\r\n")
 

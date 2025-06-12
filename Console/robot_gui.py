@@ -31,7 +31,8 @@ except Exception:
 def stuurhoek_naar_robot_async(angle):
     def worker():
         try:
-            requests.get(f"http://{ROBOT_IP}/setwaarde?val={angle}", timeout=5)
+            print(f"Verstuur nu naar robot: {angle}")  # <--- DIT TOEVOEGEN
+            requests.get(f"http://{ROBOT_IP}/setwaarde?val={angle}", timeout=10)
         except:
             pass
     threading.Thread(target=worker, daemon=True).start()
@@ -77,9 +78,7 @@ def lijnvolg_analyse_thread(img_np):
         angle_buffer.append(angle)
         gemiddelde_angle = int(sum(angle_buffer) / len(angle_buffer))
 
-        print(f"Left: {left} ({left_val}), Right: {right} ({right_val}), Offset: {offset} → Stuurhoek: {gemiddelde_angle}")
-
-        stuurhoek_naar_robot_async(gemiddelde_angle)
+        stuurhoek_naar_robot_async(angle)
 
     except Exception as e:
         print(f"Lijnanalyse fout: {e}")
@@ -192,51 +191,84 @@ def detect_verboden_toegang(img_np):
     return "Geen bord"
 
 def detect_haaientand(img_np):
-    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    # Converteer naar LAB voor betere belichtingcorrectie (optioneel net als bij verplicht links)
+    lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    img_enhanced = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2RGB)
+
+    # HSV conversie na enhancement
+    hsv = cv2.cvtColor(img_enhanced, cv2.COLOR_RGB2HSV)
+
+    # Zoek rood:
     mask1 = cv2.inRange(hsv, (0, 70, 50), (10, 255, 255))
     mask2 = cv2.inRange(hsv, (160, 70, 50), (180, 255, 255))
     red_mask = cv2.bitwise_or(mask1, mask2)
 
     red_pixels = cv2.countNonZero(red_mask)
-    if red_pixels < 1000:
+    if red_pixels < 500:  # zelfde als bij verplicht links
         return "Geen bord"
 
-    edges = cv2.Canny(red_mask, 50, 150)
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=20, maxLineGap=10)
+    # Vind contouren
+    contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 1000:
+            continue
 
-    if lines is None or len(lines) < 3:
-        return "Geen bord"
-    if len(lines) > 10:
-        return "Geen bord"
-
-    template = np.zeros_like(red_mask)
-    height, width = template.shape
-    pts = np.array([[width // 2, height // 4], [width // 4, 3 * height // 4], [3 * width // 4, 3 * height // 4]], np.int32)
-    cv2.drawContours(template, [pts], 0, 255, thickness=cv2.FILLED)
-
-    result = cv2.matchTemplate(red_mask, template, cv2.TM_CCOEFF_NORMED)
-    _, max_val, _, _ = cv2.minMaxLoc(result)
-
-    if max_val > 0.3:
-        return "Haaientand-bord"
+        approx = cv2.approxPolyDP(cnt, 0.03 * cv2.arcLength(cnt, True), True)
+        if len(approx) >= 3:  # we laten 3+ hoekpunten toe (bij verplicht links checkten we 4)
+            x, y, w, h = cv2.boundingRect(approx)
+            aspect = w / float(h)
+            if 0.5 < aspect < 2.0:
+                roi = img_enhanced[y:y+h, x:x+w]
+                roi_hsv = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+                white_mask = cv2.inRange(roi_hsv, (0, 0, 180), (180, 60, 255))
+                white_pixels = cv2.countNonZero(white_mask)
+                if white_pixels > 300:  # zelfde drempel als verplicht links
+                    return "Haaientand-bord"
 
     return "Geen bord"
+
+def bord_detectie_worker(img_np):
+    num_threads = 4
+    barrier = threading.Barrier(num_threads + 1)  # +1 want main thread doet ook mee
+
+    def detect_and_handle(detect_func, bordnaam):
+        result = detect_func(img_np)
+        if result != "Geen bord":
+            print(f"{bordnaam} gedetecteerd: {result}")
+            label_result.config(text=f"Gevonden bord: {result}")
+            board_handler(result)
+        barrier.wait()  # <-- HIER: thread meldt zich bij de barrier als klaar
+
+    threading.Thread(target=detect_and_handle, args=(detect_verplicht_links, "Verplicht links"), daemon=True).start()
+    threading.Thread(target=detect_and_handle, args=(detect_voorrangsbord, "Voorrangsbord"), daemon=True).start() 
+    threading.Thread(target=detect_and_handle, args=(detect_verboden_toegang, "Verboden toegang"), daemon=True).start() 
+    threading.Thread(target=detect_and_handle, args=(detect_haaientand, "Haaientand-bord"), daemon=True).start() 
+
+    barrier.wait()  # main thread wacht tot alle 4 worker threads klaar zijn
+
 
 # ----------------------
 # Bord handlers
 # ----------------------
 
 def board_handler(board_type, stop_time=3):
+    acquired = False
+    if not lijn_lock.locked():
+        lijn_lock.acquire()
+        acquired = True
+
     print(f"{board_type} detected!")
-    # Stop the line-following process for the given time
-    stop_line_following(stop_time)
 
-def stop_line_following(seconds):
-    global lijn_lock
-    print(f"Pausing line-following for {seconds} seconds.")
-    lijn_lock.acquire(blocking=True)  # Pauses the line-following thread
-    threading.Timer(seconds, lambda: lijn_lock.release()).start()  # Releases after 'seconds'
+    if board_type == "Verplicht links":
+        print("in de Verplicht links functie gestapt")
+        stuurhoek_naar_robot_async(95)
 
+    if acquired:
+        threading.Timer(stop_time, lijn_lock.release).start()
 
 # ----------------------
 # Snelle loop (hogere FPS)
@@ -245,20 +277,15 @@ def stop_line_following(seconds):
 def snelle_loop():
     uid = time.time()
     try:
-        resp = requests.get(f"http://{ROBOT_IP}/getphoto?uid={uid}", timeout=5)
+        resp = requests.get(f"http://{ROBOT_IP}/getphoto?uid={uid}", timeout=10)
         if "image" in resp.headers.get("Content-Type", ""):
-            img = Image.open(BytesIO(resp.content)).convert("RGB")
+            img = Image.open(BytesIO(resp.content))
             img_np = np.array(img)
 
             threading.Thread(target=lijnvolg_analyse_thread, args=(img_np,), daemon=True).start()
 
             # Trigger board detection
-            board_type = detect_verplicht_links(img_np)  # Add additional board types here as needed
-            if board_type != "Geen bord":
-                board_handler(board_type)  # Handler for the detected board
-
-            # Update the label with the detected board type
-            label_result.config(text=f"Gevonden bord: {board_type}")  # Update the label text
+            #bord_detectie_worker(img_np)  # <-- alle borden tegelijk detecteren
 
             img_overlay = img.copy()
             draw = ImageDraw.Draw(img_overlay)
@@ -270,7 +297,8 @@ def snelle_loop():
     except Exception as e:
         print("Fout:", e)
 
-    root.after(1, snelle_loop)  # 
+    root.after(1, snelle_loop)
+
 
 # ----------------------
 # GUI setup
