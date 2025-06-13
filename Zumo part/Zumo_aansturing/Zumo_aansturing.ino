@@ -26,8 +26,8 @@ void setup() {
   Serial.begin(9600);
 
   // OLED initialisatie
-  oled.init();             // Init de SH1106 OLED :contentReference[oaicite:4]{index=4}
-  oled.setLayout8x2();     // Bepaal een 8×2 tekst-layout :contentReference[oaicite:5]{index=5}
+  oled.init();             // Init de SH1106 OLED
+  oled.setLayout8x2();     // Bepaal een 8×2 tekst-layout
   oled.clear();            // Maak het scherm leeg
   
   // Welkomstboodschap op OLED
@@ -35,7 +35,7 @@ void setup() {
   oled.print(F("Wachten op"));
   oled.gotoXY(0, 1);
   oled.print(F("Nicdata"));
-  oled.display();          // Zet buffer op scherm :contentReference[oaicite:6]{index=6}
+  oled.display();          // Zet buffer op scherm
 }
 
 bool waitForStartBit() {
@@ -69,6 +69,19 @@ byte receiveByte() {
   return value;
 }
 
+// Helper functie om bewegingsstatus correct bij te houden
+void setMovingState(byte actieCode) {
+  // Beweging = alles behalve stop (92) en verkeersbord commando's (93-127)
+  if (actieCode < 92) {
+    isMoving = true;
+  } else if (actieCode == 92) {
+    isMoving = false;
+  } else {
+    // Verkeersbord commando's - kunnen zowel beweging als stop veroorzaken
+    // We laten de individuele handlers dit bepalen
+  }
+}
+
 void interpretCommand(byte code) {
   bool noodstop = (code & 0b10000000) >> 7;
   byte actieCode = code & 0b01111111;
@@ -94,7 +107,7 @@ void interpretCommand(byte code) {
     oled.display();
     motors.setSpeeds(0, 0);
     currentCommand = 92;
-    isMoving = false;
+    isMoving = false;  // Expliciet stoppen
     return;
   }
 
@@ -102,10 +115,10 @@ void interpretCommand(byte code) {
 
   if (actieCode <= 92) {
     handleMovementCommand(actieCode);
-    isMoving = (actieCode != 92);
+    setMovingState(actieCode);  // Gebruik helper functie
   } else if (actieCode >= 93 && actieCode <= 127) {
     handleTrafficSignCommand(actieCode);
-    isMoving = false;
+    // isMoving wordt door individuele traffic sign handlers gezet
   } else {
     oled.clear();
     oled.gotoXY(0, 0);
@@ -114,7 +127,7 @@ void interpretCommand(byte code) {
     oled.print(actieCode);
     oled.display();
     motors.setSpeeds(0, 0);
-    isMoving = false;
+    isMoving = false;  // Onbekend commando = stop
   }
 }
 
@@ -153,7 +166,6 @@ void stuurStop(){
   motors.setRightSpeed(stopSnelheid);
 }
 
-
 void handleMovementCommand(byte actieCode) {
   // OLED updaten: toon de movement-code
   oled.clear();
@@ -164,7 +176,6 @@ void handleMovementCommand(byte actieCode) {
 
   // Scherp links
   if (actieCode < 10) {
-    int draaiSpeed = 50;
     oled.clear();
     oled.gotoXY(0, 0);
     oled.print(F("Draaien L"));
@@ -232,10 +243,9 @@ void handleMovementCommand(byte actieCode) {
 
   // Scherp rechts
   else if (actieCode <= 90) {
-    int draaiSpeed = 50;
     oled.clear();
     oled.gotoXY(0, 0);
-    oled.print(F("Draaien L"));
+    oled.print(F("Draaien R"));  // Fix: was "Draaien L"
     oled.gotoXY(0, 1);
     oled.print(F("L:"));
     oled.print(draaiSpeed);
@@ -256,8 +266,6 @@ void handleMovementCommand(byte actieCode) {
     oled.display();
 
     stuurAchteruit();
-    motors.setLeftSpeed(-standaardSnelheid + correctieLinks);
-    motors.setRightSpeed(-standaardSnelheid);
   }
 
   // Stop met rijden
@@ -295,7 +303,9 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.gotoXY(0, 1);
       oled.print(F("Code:93"));
       
-      stuurRechtdoor();
+      stuurStop();
+      isMoving = false;
+      delay(3000);
       break;
 
     // Verboden toegang  
@@ -304,9 +314,7 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Verboden"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:94"));
-      // To Do (nog geen plaats gekregen, dus ik weet niet hoe hij hierop moet reageren)
-      //stuurStop();
-      //delay(1000);
+      isMoving = false;
       break;
 
     // Verplicht links afslaan  
@@ -317,9 +325,12 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Code:95"));
 
       stuurRechtdoor();
-      delay(1000);
+      isMoving = true;  // We gaan bewegen
+      delay(4000);
+
       stuurLinks();
-      delay(1000);
+      delay(1500);
+      isMoving = false;  // Beweging klaar
       break;
 
      // Haaientand
@@ -328,11 +339,9 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Haaietand"));
       oled.gotoXY(0, 1);
       oled.print(F("Code:96"));
-
-      stuurRechtdoorLangzaam();
-      //TODO: Deze tijden kloppen nog niet moeten nog aangepast worden voor reeële tijden.
       delay(1000);
       stuurStop();
+      isMoving = false;
       delay(1000);
       break;
 
@@ -344,7 +353,9 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Code:97"));
 
       stuurRechtdoorSnel();
-      delay(3000); // To do: check of dit een nuttige tijd is. We hebben geen bord om auto te vertragen
+      isMoving = true;  // We gaan sneller bewegen
+      delay(3000);
+      isMoving = false;  // Beweging gedaan
       break;
 
     // Stop bord
@@ -355,6 +366,7 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Code:98"));
 
       stuurStop();
+      isMoving = false;
       delay(2000);
       break;
 
@@ -366,6 +378,7 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Code:125"));
 
       stuurRechtdoor();
+      isMoving = true;  // We gaan bewegen
       break;
     
     //Oranje stoplicht
@@ -375,11 +388,14 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.gotoXY(0, 1);
       oled.print(F("Code:126"));
       
-      stuurRechtdoor(); //to do: mss weghalen
-      delay(1000); //mss weghalen
+      stuurRechtdoor();
+      isMoving = true;
+      delay(1000);
       stuurStop();
+      isMoving = false;
       delay(3000);
-      stuurRechtdoor(); // TO do: mss weghalen
+      stuurRechtdoor();
+      isMoving = true;
       break;
     
     // Rood stoplicht
@@ -389,11 +405,14 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.gotoXY(0, 1);
       oled.print(F("Code:127"));
 
-      stuurRechtdoor(); //to do: mss weghalen
-      delay(1000); //mss weghalen
+      stuurRechtdoor();
+      isMoving = true;
+      delay(1000);
       stuurStop();
+      isMoving = false;
       delay(3000);
-      stuurRechtdoor(); // TO do: mss weghalen
+      stuurRechtdoor();
+      isMoving = true;
       break;
     
     // Onbekend
@@ -402,6 +421,7 @@ void handleTrafficSignCommand(byte actieCode) {
       oled.print(F("Onbekend"));
       oled.gotoXY(0, 1);
       oled.print(actieCode);
+      isMoving = false;
       break;
   }
   oled.display();
@@ -417,6 +437,8 @@ void loop() {
     byte receivedCode = receiveByte();
     Serial.print(F("Ontvangen byte: "));
     Serial.println(receivedCode, DEC);
+
+    lastCommandTime = millis();// start de millis elke loop
 
     if (receivedCode != lastCode) {
       if (allowed && receivedCode > 10 || stableCodeIsUnder10 && allowed) {
@@ -435,10 +457,11 @@ void loop() {
         // check of alle 3 waardes gelijk zijn
         if (opslagarray[0] == opslagarray[1] && opslagarray[1] == opslagarray[2]) {
           allowed = true;
-          stableCodeIsUnder10 == true;
+          stableCodeIsUnder10 = true;
         } else {
           // stop commando zodat het signaal stabiel kan worden.
           interpretCommand(92);
+          isMoving = false;  // Expliciet stoppen na stop commando
           allowed = false;
         }
       }
@@ -449,7 +472,26 @@ void loop() {
         stableCodeIsUnder10 = false;
       }
     }
-  } else {
-    delay(10);
+  }  
+  
+  // Verbeterde timeout check - checkt ook of er überhaupt commando's zijn ontvangen
+  if (millis() - lastCommandTime > 1500) {
+    // Check of we in een bewegingstoestand zitten EN er is een timeout
+    if (isMoving || (currentCommand >= 0 && currentCommand < 92) || currentCommand == 125 || currentCommand == 126 || currentCommand == 127) {
+      // Stop de motoren
+      stuurStop();
+      oled.clear();
+      oled.gotoXY(0, 0);
+      oled.print(F("Timeout"));
+      oled.gotoXY(0, 1);
+      oled.print(F("Wachten..."));
+      oled.display();
+
+      isMoving = false;
+      currentCommand = 92;
+    }
+  }
+  else {
+    delay(8); // korte delay
   }
 }
